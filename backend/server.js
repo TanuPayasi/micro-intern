@@ -9,7 +9,10 @@ connectDB();
 const app = express();
 
 app.use(cors({
-  origin: 'http://localhost:3000',
+  origin: [
+    'http://localhost:3000',
+    'https://micro-intern-kmbirg4cz-tanupayasis-projects.vercel.app/'
+  ],
   credentials: true
 }));
 
