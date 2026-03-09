@@ -4,7 +4,7 @@ A micro-internship marketplace where students and professionals can post small t
 
 Built this to solve a real problem. Most internships require experience, but you need internships to get experience. Micro-internships break that cycle.
 
-**Live demo:** 
+**Live demo:** [micro-intern.vercel.app](https://micro-intern-kmbirg4cz-tanupayasis-projects.vercel.app/)
 
 ---
 
