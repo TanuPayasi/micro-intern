@@ -1,10 +1,10 @@
-# MicroIntern
+# MicroIntern🌸
 
 A micro-internship marketplace where students and professionals can post small tasks, apply with their skills, and build real experience through collaboration.
 
 Built this to solve a real problem. Most internships require experience, but you need internships to get experience. Micro-internships break that cycle.
 
-**Live demo:** [micro-intern.vercel.app](https://micro-intern-kmbirg4cz-tanupayasis-projects.vercel.app/)
+**Live demo:** [micro-intern.vercel.app](https://micro-intern-3ll8topop-tanupayasis-projects.vercel.app/)
 
 ---
 
