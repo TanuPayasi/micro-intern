@@ -1,240 +1,329 @@
 'use client';
+
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import toast from 'react-hot-toast';
-import { getTask, applyToTask, generateCoverNote } from '../../../lib/api';
-import { useAuth } from '../../../context/AuthContext';
-import { Clock, Users, Tag, ArrowLeft, Send, Loader2, Sparkles } from 'lucide-react';
-import Link from 'next/link';
+import { useAuth } from '@/context/AuthContext';
 
-const categoryColors = {
-  Design:      'bg-blush text-rose',
-  Development: 'bg-sky text-blue-600',
-  Marketing:   'bg-peach text-orange-600',
-  Writing:     'bg-mint text-green-600',
-  Data:        'bg-lavender text-plum',
-  Business:    'bg-yellow-100 text-yellow-700',
-  Other:       'bg-gray-100 text-gray-600',
-};
+interface Task {
+  _id: string;
+  title: string;
+  description: string;
+  skillsRequired: string[];
+  category: string;
+  duration: string;
+  compensation: string;
+  status: string;
+  applicantsCount: number;
+  postedBy: {
+    _id: string;
+    name: string;
+    email: string;
+    bio: string;
+    skills: string[];
+  };
+}
 
-const statusColors = {
-  open:          'bg-mint text-green-700',
-  'in-progress': 'bg-sky text-blue-700',
-  completed:     'bg-lavender text-plum',
-  closed:        'bg-gray-100 text-gray-600',
-};
+interface SkillGapResult {
+  matchedSkills: string[];
+  missingSkills: string[];
+  matchPercentage: number;
+  suggestion: string;
+}
 
 export default function TaskDetailPage() {
-  const { id }                        = useParams();
-  const { user }                      = useAuth();
-  const router                        = useRouter();
-  const [task, setTask]               = useState(null);
-  const [coverNote, setCoverNote]     = useState('');
-  const [applying, setApplying]       = useState(false);
-  const [loading, setLoading]         = useState(true);
-  const [showForm, setShowForm]       = useState(false);
-  const [generating, setGenerating]   = useState(false);
+  const { id } = useParams();
+  const router = useRouter();
+  const { user, token } = useAuth();
+
+  const [task, setTask] = useState<Task | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [coverNote, setCoverNote] = useState('');
+  const [applying, setApplying] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [applied, setApplied] = useState(false);
+  const [skillGap, setSkillGap] = useState<SkillGapResult | null>(null);
+  const [analyzingSkills, setAnalyzingSkills] = useState(false);
 
   useEffect(() => {
-    getTask(id)
-      .then((res) => setTask(res.data))
-      .catch(() => toast.error('Task not found'))
-      .finally(() => setLoading(false));
+    fetchTask();
   }, [id]);
 
-  const handleApply = async (e) => {
-    e.preventDefault();
-    if (!user) return router.push('/login');
-    if (!coverNote.trim()) return toast.error('Please write a cover note');
-    setApplying(true);
+  const fetchTask = async () => {
     try {
-      await applyToTask({ taskId: id, coverNote });
-      toast.success('Application submitted! 🎉');
-      setShowForm(false);
-      setCoverNote('');
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tasks/${id}`);
+      if (!res.ok) throw new Error('Task not found');
+      const data = await res.json();
+      setTask(data);
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Application failed');
+      setError('Failed to load task');
     } finally {
-      setApplying(false);
+      setLoading(false);
     }
   };
 
-  const handleGenerateCoverNote = async () => {
-    if (!user) return router.push('/login');
+  const generateCoverNote = async () => {
+    if (!task || !token) return;
     setGenerating(true);
     try {
-      const res = await generateCoverNote({
-        taskTitle:        task.title,
-        taskDescription:  task.description,
-        skillsRequired:   task.skillsRequired,
-        userSkills:       user.skills || [],
-        userName:         user.name,
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/ai/generate-cover-note`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          taskTitle: task.title,
+          taskDescription: task.description,
+          skillsRequired: task.skillsRequired,
+          userSkills: user?.skills || [],
+          userName: user?.name || '',
+        }),
       });
-      setCoverNote(res.data.coverNote);
-      toast.success('Cover note generated! ✨ Feel free to edit it');
+      const data = await res.json();
+      setCoverNote(data.coverNote);
     } catch (err) {
-      toast.error(err.response?.data?.message || 'AI generation failed');
+      alert('Failed to generate cover note');
     } finally {
       setGenerating(false);
     }
   };
 
-  if (loading) return (
-    <div className="flex items-center justify-center min-h-screen">
-      <Loader2 size={32} className="animate-spin text-rose" />
-    </div>
-  );
+  const analyzeSkillGap = async () => {
+    if (!task || !token) return;
+    setAnalyzingSkills(true);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/ai/analyze-skill-gap`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          taskTitle: task.title,
+          skillsRequired: task.skillsRequired,
+          userSkills: user?.skills || [],
+        }),
+      });
+      const data = await res.json();
+      setSkillGap(data);
+    } catch (err) {
+      alert('Failed to analyze skills');
+    } finally {
+      setAnalyzingSkills(false);
+    }
+  };
 
-  if (!task) return (
-    <div className="text-center py-20">
-      <p className="text-slate-mid">Task not found.</p>
-    </div>
-  );
+  const applyToTask = async () => {
+    if (!coverNote.trim()) return alert('Please write or generate a cover note first');
+    if (!token) return router.push('/login');
+    setApplying(true);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/applications`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ taskId: id, coverNote }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      setApplied(true);
+    } catch (err: any) {
+      alert(err.message || 'Failed to apply');
+    } finally {
+      setApplying(false);
+    }
+  };
 
-  const isOwner    = user?._id === task.postedBy?._id;
-  const colorClass = categoryColors[task.category] || categoryColors.Other;
+  const getMatchColor = (percentage: number) => {
+    if (percentage >= 70) return 'bg-green-500';
+    if (percentage >= 40) return 'bg-yellow-500';
+    return 'bg-red-500';
+  };
+
+  const getMatchLabel = (percentage: number) => {
+    if (percentage >= 70) return 'Strong Match';
+    if (percentage >= 40) return 'Partial Match';
+    return 'Low Match';
+  };
+
+  if (loading) return <div className="text-center py-20 text-gray-400">Loading...</div>;
+  if (error) return <div className="text-center py-20 text-red-400">{error}</div>;
+  if (!task) return null;
+
+  const isOwner = user?._id === task.postedBy._id;
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10">
+    <div className="max-w-3xl mx-auto px-4 py-8">
+      <button
+        onClick={() => router.back()}
+        className="text-gray-500 hover:text-gray-700 mb-6 flex items-center gap-1 text-sm"
+      >
+        ← Back
+      </button>
 
-      <Link href="/tasks" className="inline-flex items-center gap-2 text-slate-light hover:text-rose text-sm mb-6 transition-colors">
-        <ArrowLeft size={15} />
-        Back to Tasks
-      </Link>
-
-      <div className="bg-white rounded-2xl shadow-card border border-gray-100 p-6 sm:p-8 mb-5">
-
-        {/* Header */}
-        <div className="flex items-start justify-between gap-3 mb-4">
-          <span className={`badge ${colorClass}`}>{task.category}</span>
-          <span className={`badge ${statusColors[task.status] || 'bg-gray-100 text-gray-600'}`}>
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-6">
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <span className="text-xs font-medium bg-pink-100 text-pink-600 px-2 py-1 rounded-full">
+              {task.category}
+            </span>
+            <h1 className="text-2xl font-bold text-gray-900 mt-2">{task.title}</h1>
+            <p className="text-gray-500 text-sm mt-1">
+              Posted by {task.postedBy.name}
+            </p>
+          </div>
+          <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+            task.status === 'open' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'
+          }`}>
             {task.status}
           </span>
         </div>
 
-        <h1 className="text-2xl font-bold text-slate-dark mb-4">{task.title}</h1>
+        <p className="text-gray-700 leading-relaxed mb-6">{task.description}</p>
 
-        {/* Meta */}
-        <div className="flex flex-wrap gap-4 text-sm text-slate-light mb-5">
-          <span className="flex items-center gap-1.5"><Clock size={14} />{task.duration}</span>
-          <span className="flex items-center gap-1.5"><Users size={14} />{task.applicantsCount} applicants</span>
-          <span className="flex items-center gap-1.5"><Tag size={14} />{task.compensation}</span>
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="bg-gray-50 rounded-lg p-3">
+            <p className="text-xs text-gray-400 mb-1">Duration</p>
+            <p className="text-sm font-medium text-gray-700">{task.duration}</p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-3">
+            <p className="text-xs text-gray-400 mb-1">Compensation</p>
+            <p className="text-sm font-medium text-gray-700">{task.compensation}</p>
+          </div>
         </div>
 
-        <p className="text-slate-mid leading-relaxed mb-6 whitespace-pre-line">{task.description}</p>
-
-        {/* Skills */}
-        <div className="mb-6">
-          <h3 className="text-sm font-semibold text-slate-dark mb-2">Skills Required</h3>
+        <div className="mb-4">
+          <p className="text-xs text-gray-400 mb-2">Skills Required</p>
           <div className="flex flex-wrap gap-2">
-            {task.skillsRequired?.map((skill, i) => (
-              <span key={i} className="badge bg-lavender text-plum">{skill}</span>
+            {task.skillsRequired.map((skill) => (
+              <span key={skill} className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-full">
+                {skill}
+              </span>
             ))}
           </div>
         </div>
 
-        {/* Posted By */}
-        <div className="pt-5 border-t border-gray-50">
-          <p className="text-sm text-slate-light">
-            Posted by <span className="text-rose font-medium">{task.postedBy?.name}</span>
-          </p>
-          {task.postedBy?.bio && (
-            <p className="text-sm text-slate-light mt-1">{task.postedBy.bio}</p>
-          )}
-        </div>
-
+        <p className="text-xs text-gray-400">{task.applicantsCount} applicants</p>
       </div>
 
-      {/* Apply Section */}
-      {!isOwner && task.status === 'open' && (
-        <div className="bg-white rounded-2xl shadow-soft border border-gray-100 p-6">
-          {!showForm ? (
-            <div className="text-center">
-              <p className="text-slate-mid mb-4">Interested in this task?</p>
+      {user && !isOwner && task.status === 'open' && (
+        <>
+          <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Check Your Fit</h2>
               <button
-                onClick={() => user ? setShowForm(true) : router.push('/login')}
-                className="btn-primary flex items-center gap-2 mx-auto"
+                onClick={analyzeSkillGap}
+                disabled={analyzingSkills}
+                className="text-sm bg-blue-50 text-blue-600 px-4 py-2 rounded-lg hover:bg-blue-100 disabled:opacity-50 transition"
               >
-                <Send size={15} />
-                Apply Now
+                {analyzingSkills ? 'Analyzing...' : 'Analyze My Skills'}
               </button>
             </div>
-          ) : (
-            <form onSubmit={handleApply}>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-slate-dark">Your Application</h3>
 
-                {/* AI Generate Button */}
+            {!skillGap && !analyzingSkills && (
+              <p className="text-sm text-gray-400">
+                Click analyze to see how your skills match this task.
+              </p>
+            )}
+
+            {skillGap && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-700">
+                    {getMatchLabel(skillGap.matchPercentage)}
+                  </span>
+                  <span className="text-sm font-bold text-gray-900">
+                    {skillGap.matchPercentage}%
+                  </span>
+                </div>
+
+                <div className="w-full bg-gray-100 rounded-full h-2 mb-4">
+                  <div
+                    className={`h-2 rounded-full transition-all ${getMatchColor(skillGap.matchPercentage)}`}
+                    style={{ width: `${skillGap.matchPercentage}%` }}
+                  />
+                </div>
+
+                {skillGap.matchedSkills.length > 0 && (
+                  <div className="mb-3">
+                    <p className="text-xs text-gray-400 mb-2">You have</p>
+                    <div className="flex flex-wrap gap-2">
+                      {skillGap.matchedSkills.map((skill) => (
+                        <span key={skill} className="text-xs bg-green-50 text-green-600 px-2 py-1 rounded-full">
+                          ✓ {skill}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {skillGap.missingSkills.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-xs text-gray-400 mb-2">You're missing</p>
+                    <div className="flex flex-wrap gap-2">
+                      {skillGap.missingSkills.map((skill) => (
+                        <span key={skill} className="text-xs bg-red-50 text-red-500 px-2 py-1 rounded-full">
+                          ✗ {skill}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-sm text-gray-600 bg-gray-50 rounded-lg p-3">
+                  {skillGap.suggestion}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {!applied ? (
+            <div className="bg-white rounded-2xl border border-gray-200 p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Apply to this Task</h2>
+
+              <div className="flex justify-end mb-2">
                 <button
-                  type="button"
-                  onClick={handleGenerateCoverNote}
+                  onClick={generateCoverNote}
                   disabled={generating}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-lavender text-plum rounded-xl text-xs font-medium hover:bg-purple-100 transition-all disabled:opacity-60"
+                  className="text-sm text-pink-500 hover:text-pink-600 disabled:opacity-50"
                 >
-                  {generating
-                    ? <Loader2 size={12} className="animate-spin" />
-                    : <Sparkles size={12} />
-                  }
-                  {generating ? 'Generating...' : 'Generate with AI ✨'}
+                  {generating ? 'Generating...' : '✨ Generate with AI'}
                 </button>
               </div>
-
-              {/* AI generating animation */}
-              {generating && (
-                <div className="mb-3 p-3 bg-lavender/30 rounded-xl border border-lavender text-sm text-plum flex items-center gap-2">
-                  <Loader2 size={14} className="animate-spin" />
-                  AI is writing your cover note...
-                </div>
-              )}
 
               <textarea
                 value={coverNote}
                 onChange={(e) => setCoverNote(e.target.value)}
-                placeholder="Write your cover note here, or click 'Generate with AI ✨' to get a personalized draft..."
+                placeholder="Write your cover note here..."
                 rows={5}
-                className="input resize-none mb-4"
-                required
+                className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300 resize-none mb-4"
               />
 
-              {/* Show AI badge if generated */}
-              {coverNote && (
-                <p className="text-xs text-slate-light mb-3 flex items-center gap-1">
-                  <Sparkles size={11} className="text-plum" />
-                  AI-generated — feel free to edit before submitting
-                </p>
-              )}
-
-              <div className="flex gap-3">
-                <button
-                  type="submit"
-                  disabled={applying}
-                  className="btn-primary flex items-center gap-2 disabled:opacity-60"
-                >
-                  {applying ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-                  {applying ? 'Submitting...' : 'Submit Application'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setShowForm(false); setCoverNote(''); }}
-                  className="btn-ghost"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
+              <button
+                onClick={applyToTask}
+                disabled={applying || !coverNote.trim()}
+                className="w-full bg-pink-500 text-white py-3 rounded-lg font-medium hover:bg-pink-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                {applying ? 'Submitting...' : 'Submit Application'}
+              </button>
+            </div>
+          ) : (
+            <div className="bg-green-50 border border-green-200 rounded-2xl p-6 text-center">
+              <p className="text-green-600 font-medium">Application submitted successfully!</p>
+              <p className="text-green-500 text-sm mt-1">The task owner will review your application.</p>
+            </div>
           )}
-        </div>
+        </>
       )}
 
       {isOwner && (
-        <div className="bg-lavender/20 rounded-2xl border border-lavender p-5 text-center">
-          <p className="text-slate-mid text-sm">This is your task.</p>
-          <Link href="/dashboard" className="text-rose font-medium text-sm hover:underline mt-1 inline-block">
-            Manage applications in Dashboard →
-          </Link>
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-center">
+          <p className="text-blue-600 text-sm">This is your task. Go to your dashboard to manage applications.</p>
         </div>
       )}
-
     </div>
   );
 }
