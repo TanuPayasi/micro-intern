@@ -4,10 +4,14 @@ const Task = require('../models/Task');
 const Application = require('../models/Application');
 const { protect } = require('../middleware/auth');
 
-// GET /api/tasks — browse all open tasks
 router.get('/', async (req, res) => {
   try {
-    const { category, search } = req.query;
+    const { category, search, page = 1, limit = 10 } = req.query;
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
     let query = { status: 'open' };
 
     if (category && category !== 'All') query.category = category;
@@ -20,17 +24,29 @@ router.get('/', async (req, res) => {
       ];
     }
 
+    const totalTasks = await Task.countDocuments(query);
+    const totalPages = Math.ceil(totalTasks / limitNum);
+
     const tasks = await Task.find(query)
       .populate('postedBy', 'name email')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum);
 
-    res.json(tasks);
+    res.json({
+      tasks,
+      currentPage: pageNum,
+      totalPages,
+      totalTasks,
+      hasNextPage: pageNum < totalPages,
+      hasPrevPage: pageNum > 1,
+    });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
-// GET /api/tasks/user/my-tasks — MUST be before /:id
+// must be before /:id to avoid route conflict
 router.get('/user/my-tasks', protect, async (req, res) => {
   try {
     const tasks = await Task.find({ postedBy: req.user._id }).sort({ createdAt: -1 });
@@ -40,7 +56,6 @@ router.get('/user/my-tasks', protect, async (req, res) => {
   }
 });
 
-// GET /api/tasks/:id
 router.get('/:id', async (req, res) => {
   try {
     const task = await Task.findById(req.params.id).populate(
@@ -53,13 +68,21 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST /api/tasks — create task
 router.post('/', protect, async (req, res) => {
   try {
     const { title, description, skillsRequired, category, duration, compensation } = req.body;
 
     if (!title || !description || !category || !duration || !skillsRequired?.length)
       return res.status(400).json({ message: 'All fields are required' });
+
+    if (title.trim().length < 5)
+      return res.status(400).json({ message: 'Title must be at least 5 characters' });
+
+    if (description.trim().length < 20)
+      return res.status(400).json({ message: 'Description must be at least 20 characters' });
+
+    if (description.trim().length > 2000)
+      return res.status(400).json({ message: 'Description cannot exceed 2000 characters' });
 
     const task = await Task.create({
       title,
@@ -78,7 +101,6 @@ router.post('/', protect, async (req, res) => {
   }
 });
 
-// PUT /api/tasks/:id — update task
 router.put('/:id', protect, async (req, res) => {
   try {
     const task = await Task.findById(req.params.id);
@@ -94,7 +116,6 @@ router.put('/:id', protect, async (req, res) => {
   }
 });
 
-// DELETE /api/tasks/:id
 router.delete('/:id', protect, async (req, res) => {
   try {
     const task = await Task.findById(req.params.id);
