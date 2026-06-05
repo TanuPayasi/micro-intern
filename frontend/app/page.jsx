@@ -1,116 +1,80 @@
 'use client';
+import Link from 'next/link';
+import { ArrowRight, Briefcase, Users, Star, Zap } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
-import { useState, useEffect } from 'react';
-import TaskCard from '@/components/TaskCard';
-import FilterBar from '@/components/FilterBar';
+const features = [
+  { icon: Briefcase, title: 'Post Tasks', desc: 'Share what you need help with — design, dev, marketing and more.', color: 'bg-blush' },
+  { icon: Users, title: 'Find Contributors', desc: 'Browse skilled people ready to contribute and learn.', color: 'bg-lavender' },
+  { icon: Star, title: 'Build Portfolio', desc: 'Gain real experience and collect reviews to showcase.', color: 'bg-mint' },
+  { icon: Zap, title: 'Skill Swap', desc: 'Trade skills instead of cash — collaborate and grow together.', color: 'bg-sky' },
+];
 
-export default function TasksPage() {
-  const [tasks, setTasks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [category, setCategory] = useState('All');
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalTasks, setTotalTasks] = useState(0);
-
-  useEffect(() => {
-    fetchTasks();
-  }, [category, page]);
-
-  const fetchTasks = async () => {
-    try {
-      setLoading(true);
-      const params = new URLSearchParams({ page, limit: 10 });
-      if (category !== 'All') params.append('category', category);
-      if (search) params.append('search', search);
-
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/tasks?${params}`);
-      const data = await res.json();
-
-      setTasks(data.tasks);
-      setTotalPages(data.totalPages);
-      setTotalTasks(data.totalTasks);
-    } catch (err) {
-      setError('Failed to load tasks');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSearch = (e) => {
-    e.preventDefault();
-    setPage(1);
-    fetchTasks();
-  };
-
-  const handleCategoryChange = (newCategory) => {
-    setCategory(newCategory);
-    setPage(1);
-  };
+export default function HomePage() {
+  const { user } = useAuth();
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Browse Tasks</h1>
-        <p className="text-gray-500">{totalTasks} tasks available</p>
-      </div>
+    <div className="min-h-screen bg-cream">
 
-      <form onSubmit={handleSearch} className="flex gap-2 mb-6">
-        <input
-          type="text"
-          placeholder="Search tasks or skills..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-pink-300"
-        />
-        <button
-          type="submit"
-          className="bg-pink-500 text-white px-4 py-2 rounded-lg hover:bg-pink-600 transition"
-        >
-          Search
-        </button>
-      </form>
+      <section className="max-w-4xl mx-auto px-4 pt-16 pb-12 text-center">
+        <div className="inline-flex items-center gap-2 bg-blush text-rose text-sm font-medium px-4 py-1.5 rounded-full mb-6">
+          <Zap size={13} />
+          Skill Swap & Micro-Internship Marketplace
+        </div>
+        <h1 className="text-4xl sm:text-5xl font-bold text-slate-dark mb-5 leading-tight">
+          Learn by doing.<br />
+          <span className="text-rose">Grow by sharing.</span>
+        </h1>
+        <p className="text-slate-mid text-lg mb-8 max-w-xl mx-auto leading-relaxed">
+          Post micro-tasks, apply with your skills, and build real-world experience — one collaboration at a time.
+        </p>
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+          <Link href="/tasks" className="btn-primary flex items-center gap-2 text-base px-7 py-3">
+            Browse Tasks
+            <ArrowRight size={16} />
+          </Link>
+          {user ? (
+            <Link href="/tasks/post" className="btn-ghost flex items-center gap-2 text-base px-7 py-3">
+              Post a Task
+            </Link>
+          ) : (
+            <Link href="/signup" className="btn-ghost flex items-center gap-2 text-base px-7 py-3">
+              Get Started Free
+            </Link>
+          )}
+        </div>
+      </section>
 
-      <FilterBar selected={category} onChange={handleCategoryChange} />
+      <section className="max-w-5xl mx-auto px-4 py-12">
+        <h2 className="text-2xl font-bold text-slate-dark text-center mb-8">
+          How It Works
+        </h2>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {features.map((f, i) => (
+            <div key={i} className="bg-white rounded-2xl p-5 shadow-soft border border-gray-50">
+              <div className={`w-10 h-10 ${f.color} rounded-xl flex items-center justify-center mb-4`}>
+                <f.icon size={18} className="text-slate-dark" />
+              </div>
+              <h3 className="font-semibold text-slate-dark mb-2">{f.title}</h3>
+              <p className="text-slate-light text-sm leading-relaxed">{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
-      {loading ? (
-        <div className="text-center py-12 text-gray-400">Loading tasks...</div>
-      ) : error ? (
-        <div className="text-center py-12 text-red-400">{error}</div>
-      ) : tasks.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">No tasks found</div>
-      ) : (
-        <>
-          <div className="space-y-4">
-            {tasks.map((task) => (
-              <TaskCard key={task._id} task={task} />
-            ))}
-          </div>
+      <section className="max-w-2xl mx-auto px-4 py-12 text-center">
+        <div className="bg-lavender/30 rounded-3xl p-8 border border-lavender">
+          <h2 className="text-2xl font-bold text-slate-dark mb-3">
+            Ready to start?
+          </h2>
+          <p className="text-slate-mid mb-6">Join the community and start building today.</p>
+          <Link href={user ? '/tasks' : '/signup'} className="btn-primary inline-flex items-center gap-2 text-base px-7 py-3">
+            {user ? 'Find Tasks' : 'Create Free Account'}
+            <ArrowRight size={16} />
+          </Link>
+        </div>
+      </section>
 
-          <div className="flex items-center justify-between mt-8">
-            <button
-              onClick={() => setPage((p) => p - 1)}
-              disabled={page === 1}
-              className="px-4 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
-            >
-              Previous
-            </button>
-
-            <span className="text-sm text-gray-500">
-              Page {page} of {totalPages}
-            </span>
-
-            <button
-              onClick={() => setPage((p) => p + 1)}
-              disabled={page === totalPages}
-              className="px-4 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
-            >
-              Next
-            </button>
-          </div>
-        </>
-      )}
     </div>
   );
 }
