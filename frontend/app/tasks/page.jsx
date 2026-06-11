@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import TaskCard from '@/components/TaskCard';
-import FilterBar from '@/components/FilterBar';
+import TaskCard from '../../components/TaskCard';
+import FilterBar from '../../components/FilterBar';
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState([]);
